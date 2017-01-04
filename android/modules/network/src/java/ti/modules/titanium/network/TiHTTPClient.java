@@ -1000,6 +1000,7 @@ public class TiHTTPClient
 		// TODO consider using task manager
 		int totalLength = 0;
 		needMultipart = false;
+		String filePath = "";
 
 		if (userData != null)
 		{
@@ -1059,7 +1060,15 @@ public class TiHTTPClient
 					value = ((TiFileProxy) value).getBaseFile();
 				}
 				if (value instanceof TiBaseFile || value instanceof TiBlob) {
-					setRawData(titaniumFileAsPutData(value));
+					if (value instanceof TiBaseFile) {
+						TiBaseFile baseFile = (TiBaseFile) value;
+						FileEntity fileEntity = new FileEntity(baseFile.getNativeFile(), TiMimeTypeHelper.getMimeType(baseFile.nativePath()));	
+						setRawData(fileEntity);
+						totalLength = (int)fileEntity.getContentLength();
+						filePath = baseFile.nativePath();
+					} else {
+						setRawData(titaniumFileAsPutData(value));
+					}
 				} else {
 					setRawData(TiConvert.toString(value));
 				}
@@ -1071,8 +1080,8 @@ public class TiHTTPClient
 		Log.d(TAG, "Instantiating http request with method='" + method + "' and this url:", Log.DEBUG_MODE);
 		Log.d(TAG, this.url, Log.DEBUG_MODE);
 		
-		clientThread = new Thread(new ClientRunnable(totalLength), "TiHttpClient-" + httpClientThreadCounter.incrementAndGet());
-		clientThread.setPriority(Thread.MIN_PRIORITY);
+		clientThread = new Thread(new ClientRunnable(totalLength, filePath), "TiHttpClient-" + httpClientThreadCounter.incrementAndGet());
+		clientThread.setPriority(Thread.NORM_PRIORITY);
 		clientThread.start();
 
 		Log.d(TAG, "Leaving send()", Log.DEBUG_MODE);
@@ -1083,14 +1092,16 @@ public class TiHTTPClient
 	private class ClientRunnable implements Runnable
 	{
 		private final int totalLength;
+		private String filePath;
 		private PrintWriter printWriter;
 		private OutputStream outputStream;
 		private String boundary;
 		private static final String LINE_FEED = "\r\n";
 
-		public ClientRunnable(int totalLength)
+		public ClientRunnable(int totalLength, String path)
 		{
 			this.totalLength = totalLength;
+			this.filePath = path;
 		}
 
 		public void run()
@@ -1133,11 +1144,14 @@ public class TiHTTPClient
 					
 					boolean isPostOrPutOrPatch = method.equals("POST") || method.equals("PUT") || method.equals("PATCH");
 					
-					client.setUseCaches(true);
+					//client.setUseCaches(true);
 					client.setRequestMethod(method);
 					client.setDoInput(true);
 					if (isPostOrPutOrPatch) {
 						client.setDoOutput(true);
+						if (!filePath.equals("")) {
+							client.setFixedLengthStreamingMode(totalLength);
+						}
 					}
 					client.setUseCaches(false);
 					// This is to set gzip default to disable
